@@ -101,6 +101,33 @@ class Helper:
         cls.t = threading.Thread(target=cls.main)
         cls.t.start()
 
+    @staticmethod
+    def test():
+        import numpy as np
+        from mpl_toolkits.mplot3d import axes3d
+        print("gather data")
+        X, Y, Z = axes3d.get_test_data(0.05)
+        """
+        X = np.arange(-5, 5, 0.25)
+        Y = np.arange(-5, 5, 0.25)
+        X, Y = np.meshgrid(X, Y)
+        R = np.sqrt(X ** 2 + Y ** 2)
+        Z = np.sin(R)
+        """
+        l = Z.shape[0]
+        print("make vertex")
+        v = np.array([X.flatten(), Y.flatten(), Z.flatten()]).T.tolist()
+        print("make quads")
+        quads = [[j * l + i, j * l + i + 1, j * l + l + i + 1, j * l + l + i]
+                 for i in range(l - 1) for j in range(l - 1)]
+        print("contact factory")
+        cosimo = Helper.wrap(Helper.ns.resolve("Cosimo.Factory"))
+        print("create mesh")
+        pippo = Helper.wrap(Helper.ns.connect(cosimo.wait(cosimo.make("Mesh", "pippo"))))
+        print("loading data")
+        f = pippo.loadData(v, [], quads)
+        return f
+
 
 if __name__ == '__main__':
     Helper.main()
