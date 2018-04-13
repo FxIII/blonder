@@ -13,17 +13,28 @@ class Factory(aiomas.Agent):
     name = None
     container = None
     ns = None
+    builders = {}
+
+    @classmethod
+    def register(cls, prefix):
+        def decorator(targetClass):
+            Factory.builders[targetClass.__name__] = (targetClass, prefix)
+            return targetClass
+
+        return decorator
 
     @aiomas.expose
     async def makeMesh(self, name):
         mesh = await self.createAgent(Mesh, "meshes." + name)
-        me = bpy.data.meshes.new(name)
-        mesh.obj = bpy.data.objects.new(name, me)
-        scn = bpy.context.scene
-        scn.objects.link(mesh.obj)
-        scn.objects.active = mesh.obj
-        mesh.obj.select = True
+        mesh.setup(name)
         return mesh.addr
+
+    @aiomas.expose
+    async def make(self, className, name):
+        targetClass, prefix = self.builders[className]
+        obj = await self.createAgent(targetClass, prefix + name)
+        obj.setup(name)
+        return obj.addr
 
     async def register(self, name, obj):
         name = self.name + "." + name
@@ -36,9 +47,18 @@ class Factory(aiomas.Agent):
         return agent
 
 
+@Factory.register("meshes.")
 class Mesh(aiomas.Agent):
     name = None
     obj = None
+
+    def setup(self, name):
+        me = bpy.data.meshes.new(name)
+        self.obj = bpy.data.objects.new(name, me)
+        scn = bpy.context.scene
+        scn.objects.link(self.obj)
+        scn.objects.active = self.obj
+        self.obj.select = True
 
     @aiomas.expose
     def loadData(self, vertices, edges, polygons):
