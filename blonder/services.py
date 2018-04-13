@@ -16,7 +16,7 @@ class Factory(aiomas.Agent):
     builders = {}
 
     @classmethod
-    def register(cls, prefix):
+    def registerClass(cls, prefix):
         def decorator(targetClass):
             Factory.builders[targetClass.__name__] = (targetClass, prefix)
             return targetClass
@@ -47,7 +47,7 @@ class Factory(aiomas.Agent):
         return agent
 
 
-@Factory.register("meshes.")
+@Factory.registerClass("meshes.")
 class Mesh(aiomas.Agent):
     name = None
     obj = None
