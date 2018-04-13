@@ -1,6 +1,6 @@
 import asyncio
 import threading
-import munch
+import time
 
 import aiomas
 
@@ -12,19 +12,20 @@ CONTAINER = ("0.0.0.0", 5556)
 class AWrapper:
     def __init__(self, what):
         self._target = what
-        self.post = munch.Munch()
+        if isinstance(what, asyncio.Future):
+            self._target = self.wait(what)
 
     @staticmethod
     def wait(future, timeout=100):
-        import time
+
         async def checkWait():
             startT = time.time()
             await asyncio.sleep(0.01)
             while future._state == "PENDING" and startT + timeout > time.time():
                 await asyncio.sleep(1)
 
-        l = asyncio.get_event_loop()
-        l.run_until_complete(checkWait())
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(checkWait())
         return future.result()
 
     def __getattr__(self, item):
@@ -39,7 +40,10 @@ class AWrapper:
                 except Exception as e:
                     fret.set_exception(e)
                     return
-                post = getattr(self.post, item, None)
+                try:
+                    post = self.__getattribute__("post_%s" % item)
+                except AttributeError as e:
+                    post = None
                 if post is not None:
                     try:
                         ret = await post(ret, *a, **k)
@@ -48,14 +52,37 @@ class AWrapper:
                         return
                 fret.set_result(ret)
 
-            Main.loop.call_soon_threadsafe(asyncio.ensure_future, asyncDo(*a, **k))
-
+            Helper.loop.call_soon_threadsafe(asyncio.ensure_future, asyncDo(*a, **k))
             return fret
 
         return askToDo
 
 
-class Main:
+class NSWrapper(AWrapper):
+    @staticmethod
+    async def post_resolve(target, *a, **k):
+        return await Helper.container.connect(target)
+
+    def connect(self, addr):
+        fret = asyncio.Future()
+
+        async def connect():
+            try:
+                ret = await Helper.container.connect(addr)
+            except Exception as  e:
+                fret.set_exception(e)
+                return
+            fret.set_result(ret)
+
+        Helper.loop.call_soon_threadsafe(asyncio.ensure_future, connect())
+        return fret
+
+
+class Helper:
+    loop = None
+    container = None
+    wrap = AWrapper
+
     @classmethod
     def main(cls):
         cls.loop = asyncio.new_event_loop()
@@ -67,12 +94,7 @@ class Main:
     async def setup(cls):
         cls.container = await aiomas.Container.create(CONTAINER, as_coro=True)
         cls.ans = await cls.container.connect(NSADDR)
-        cls.ns = AWrapper(cls.ans)
-        cls.ns.post.resolve = cls.connectTo
-
-    @classmethod
-    async def connectTo(cls, target, *a, **k):
-        return await cls.container.connect(target)
+        cls.ns = NSWrapper(cls.ans)
 
     @classmethod
     def run(cls):
@@ -81,48 +103,4 @@ class Main:
 
 
 if __name__ == '__main__':
-    Main.main()
-
-
-def test():
-    ns = Main.ns
-    cosimo = AWrapper(ns.wait(ns.resolve("Cosimo.Factory")))
-    cosimo.wait(cosimo.makeMesh("ciccio"))
-    ciccio = AWrapper(ns.wait(ns.resolve("Cosimo.meshes.ciccio")))
-    coord1 = (-1.0, 1.0, 0.0)
-    coord2 = (-1.0, -1.0, 0.0)
-    coord3 = (1.0, -1.0, 0.0)
-    coord4 = (1.0, 1.0, 0.0)
-
-    Verts = [coord1, coord2, coord3, coord4]
-    Edges = [[0, 1], [1, 2], [2, 3], [3, 0]]
-    ciccio.wait(ciccio.loadData(Verts, Edges, []))
-
-
-"""
-import looper
-import bpy
-bpy.ops.object.looper()
-
-
-import asyncio
-import aiomas
-
-
-class Callee(aiomas.Agent):
-    @aiomas.expose
-    def spam(self, times):
-        return 'spam' * times
-
-
-loop = asyncio.get_event_loop()
-
-
-async def setup():
-    container = await aiomas.Container.create(('localhost', 5555), as_coro=True)
-    agent = Callee(container)
-    print(agent.addr)
-
-
-loop.create_task(setup())
-"""
+    Helper.main()
