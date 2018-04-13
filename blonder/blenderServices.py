@@ -58,5 +58,3 @@ async def setup(name):
 def startService(name):
     loop = asyncio.get_event_loop()
     loop.create_task(setup(name))
-
-startService("Cosimo")
