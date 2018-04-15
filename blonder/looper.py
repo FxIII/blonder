@@ -1,18 +1,20 @@
 import bpy
 import asyncio
 
-_loop = asyncio.get_event_loop()
-_loop._run_forever = _loop.run_forever
-_loop._run_until_complete = _loop.run_until_complete
 
+def patchEventLoop():
+    _loop = asyncio.get_event_loop()
+    if getattr(_loop, "_run_forever", None) is not None:
+        return
+    _loop._run_forever = _loop.run_forever
+    _loop._run_until_complete = _loop.run_until_complete
 
-def run_once(*a, **k):
-    _loop.call_soon(_loop.stop)
-    _loop._run_forever()
+    def run_once(*a, **k):
+        _loop.call_soon(_loop.stop)
+        _loop._run_forever()
 
-
-_loop.run_forever = run_once
-_loop.run_until_complete = _loop.create_task
+    _loop.run_forever = run_once
+    _loop.run_until_complete = _loop.create_task
 
 
 class LooperOperator(bpy.types.Operator):
@@ -35,7 +37,7 @@ class LooperOperator(bpy.types.Operator):
         return {'PASS_THROUGH'}
 
     def execute(self, context):
-        self.report({'INFO'}, 'Printing report to Info window.')
+        patchEventLoop()
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.1, context.window)
         wm.modal_handler_add(self)

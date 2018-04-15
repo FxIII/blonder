@@ -1,7 +1,6 @@
-import looper
+import blonder.looper
 import bpy
 
-bpy.ops.object.looper()
 NSADDR = "tcp://localhost:5555/0"
 CONTAINER = ("0.0.0.0", 5557)
 
@@ -15,6 +14,14 @@ class Factory(aiomas.Agent):
     ns = None
     builders = {}
 
+    async def setup(self, name, container, nameServer):
+
+        self.name = name
+        self.container = container
+        self.ns = nameServer
+        await self.register("Factory", self)
+        view3D = await self.createAgent(View3D, "View3D")
+
     @classmethod
     def registerClass(cls, prefix):
         def decorator(targetClass):
@@ -22,6 +29,14 @@ class Factory(aiomas.Agent):
             return targetClass
 
         return decorator
+
+    @aiomas.expose
+    def lookTo(self, position, allAreas=False):
+        areas = [i.spaces.active.region_3d for i in bpy.context.screen.areas if i.type == "VIEW_3D"]
+        if not allAreas:
+            areas = areas[:1]
+        for area in areas:
+            area.view_location = position
 
     @aiomas.expose
     async def makeMesh(self, name):
@@ -47,6 +62,37 @@ class Factory(aiomas.Agent):
         return agent
 
 
+class View3D(aiomas.Agent):
+    @aiomas.expose
+    def list(self):
+        areas = [i.spaces.active.region_3d for i in bpy.context.screen.areas if i.type == "VIEW_3D"]
+        return list(map(id, areas))
+
+    def byID(self, areaId):
+        areas = [i.spaces.active.region_3d for i in bpy.context.screen.areas if i.type == "VIEW_3D"]
+        return areas [areaId]
+
+    @aiomas.expose
+    def lookTo(self, areaID, position):
+        area = self.byID(areaID)
+        area.view_location = position
+
+    @aiomas.expose
+    def look(self, areaID):
+        area = self.byID(areaID)
+        return tuple(area.view_location)
+
+    @aiomas.expose
+    def rotateView(self, areaId, rotation):
+        area = self.byID(areaId)
+        area.view_rotation = rotation
+
+    @aiomas.expose
+    def viewRotation(self, areaId):
+        area = self.byID(areaId)
+        return tuple(area.view_rotation)
+
+
 @Factory.registerClass("meshes.")
 class Mesh(aiomas.Agent):
     name = None
@@ -67,14 +113,12 @@ class Mesh(aiomas.Agent):
 
 async def setup(name):
     container = await aiomas.Container.create(CONTAINER, as_coro=True)
-    factory = Factory(container)
-    factory.name = name
-    factory.container = container
     ns = await container.connect(NSADDR)
-    factory.ns = ns
-    await factory.register("Factory", factory)
+    factory = Factory(container)
+    await factory.setup(name, container, ns)
 
 
 def startService(name):
+    bpy.ops.system.looper()
     loop = asyncio.get_event_loop()
     loop.create_task(setup(name))
